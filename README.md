@@ -1,28 +1,28 @@
 # Azure AKS - ArgoCD Tutorial
 
-In this tutorial we are going to setup a Azure AKS Cluster and deploy ArgoCD and a Example App in it.
-This tutorial is based on the [ArgoCD for Beginners Tutorial](https://www.youtube.com/watch?v=MeU5_k9ssrs) from [TechWorld with Nana](https://www.techworld-with-nana.com/).
+In this tutorial, we’ll set up an Azure AKS cluster and deploy Traefik, ArgoCD, and an example application on it.
 
 ## K8S Setup
 
-First we need a working K8S setup
+First, we need a working Kubernetes setup.
 
-### Create a AKS Cluster
+### Create an AKS Cluster
 
-**Perquisite:**
+**Prerequisites:**
 
-We are going to use the [30 Day Free Azure Account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account) for this tutorial, after creating it we need to setup [azure-cli](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) on our local machine.
-After installing run `az login` to login to your azure account and run `az aks install-cli` to install aks `kubectl`.
-Later on we'll also need a domain we can point to your K8S ingress, I use my own but you could easily use [duckdns](https://www.duckdns.org/) for this.
+We’ll use the [30-Day Free Azure Account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account) for this tutorial. After registering, set up the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) on your local machine.
+After installation, run `az login` to log in to your Azure account, and `az aks install-cli` to install the AKS `kubectl` CLI tool.
 
-First we need to define some variables that we are going to use later on:
+Later, we’ll also need a domain that we can point to our Kubernetes ingress. I’ll use my own, but you can easily use [DuckDNS](https://www.duckdns.org/) instead.
+
+Let’s define some variables that we’ll use throughout the setup:
 
 ```shell
 # Resource group name
 RESOURCE_GROUP="rg-aks-argocd-demo"
-# Azure Region we want to use
+# Azure region we want to use
 LOCATION="westeurope"
-# Azure K8S cluster name
+# Azure AKS cluster name
 AKS_NAME="aks-argocd-demo"
 # Node size and count, we'll keep it as small as possible
 # standard_a2_v2: 2 Cores, 4GB RAM
@@ -38,7 +38,7 @@ az group create \
   --location $LOCATION
 ```
 
-Since this is a new subscription we need to register the following resource providers for our K8S cluster to work:
+Since this is a new subscription, we need to register the following resource providers for our Kubernetes cluster to work:
 
 ```shell
 az provider register --namespace Microsoft.ContainerService
@@ -46,13 +46,13 @@ az provider register --namespace Microsoft.OperationalInsights
 az provider register --namespace Microsoft.Network
 ```
 
-This may take a couple of minutes, check the status using:
+This may take a few minutes. Check the registration status with:
 
 ```shell
 az provider list -o json | jq '.[] | select((.namespace=="Microsoft.ContainerService") or (.namespace=="Microsoft.OperationalInsights") or (.namespace=="Microsoft.Network")) | "\(.namespace): \(.registrationState)"' -r
 ```
 
-And bow we can create our AKS cluster:
+Now we can create our AKS cluster:
 
 ```shell
 az aks create \
@@ -69,11 +69,11 @@ az aks create \
   --generate-ssh-keys
 ```
 
-Wait for it to be ready...
+Wait for it to finish provisioning.
 
-Congratulations, we created a Kubernetes Cluster 🎉
+Congratulations — we’ve created a Kubernetes cluster 🎉
 
-To continue we need to add the the context to `kubectl`:
+Next, we need to add the context to `kubectl`:
 
 ```shell
 az aks get-credentials \
@@ -81,7 +81,7 @@ az aks get-credentials \
   --name $AKS_NAME
 ```
 
-To administrate the cluster we need to add our user to the "Azure Kubernetes Service RBAC Cluster Admin" Role, since we got Azure AD + Azure RBAC enabled:
+Since we’ve enabled Azure AD and Azure RBAC, we also need to add our user to the **Azure Kubernetes Service RBAC Cluster Admin** role:
 
 ```shell
 USER_ID=$(az ad signed-in-user show --query id -o tsv)
@@ -91,9 +91,9 @@ az role assignment create \
   --scope $(az aks show --resource-group $RESOURCE_GROUP --name $AKS_NAME --query id -o tsv)
 ```
 
-wait a minute for the new role to propagate.
+Wait a minute for the role assignment to propagate.
 
-Now we can verify that we are connected:
+Now verify that we’re connected:
 
 ```shell
 kubectl get nodes
@@ -102,16 +102,16 @@ kubectl get pods -A
 
 The cluster is now ready for deployments.
 
-### Create a Ingress
+### Create an Ingress
 
-But we can deploy ArgoCD we need create a Ingress to reach it securely. Here we are using [traefik](https://traefik.io/traefik).
-To setup traefik we first need to install [helm](https://helm.sh/docs/intro/install/#through-package-managers).
+Before we can deploy ArgoCD, we need to set up an ingress to reach it securely. We’ll use [Traefik](https://traefik.io/traefik) for this.
+To install Traefik, we first need to install [Helm](https://helm.sh/docs/intro/install/#through-package-managers).
 
-And to automate handling of TLS certs we will also need [cert-manager](https://cert-manager.io/). So this is where we are going to start
+To automate TLS certificate management, we’ll also install [cert-manager](https://cert-manager.io/). Let’s start with that.
 
 #### cert-manager
 
-Let's create a name space and deploy cert-manager:
+Create a namespace and deploy cert-manager:
 
 ```shell
 kubectl create namespace cert-manager
@@ -123,7 +123,8 @@ helm install \
   --set crds.enabled=true
 ```
 
-Now we need to configure it. Namely we need to set issuer for let's encrypt (E-Mail) and the solver (http01). Create a new file called `cluster-issuer-staging.yaml` (Put in your E-Mail address):
+Next, we need to configure it. Specifically, we’ll set up an issuer for Let’s Encrypt (using your email) and the HTTP-01 solver.
+Create a new file called `cluster-issuer-staging.yaml` (replace the email address with your own):
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -142,17 +143,17 @@ spec:
           class: traefik
 ```
 
-Apply the config:
+Apply the configuration:
 
 ```shell
 kubectl apply -f cluster-issuer-staging.yaml
 ```
 
-Ok, now let's deploy our traefik ingress
+Now, let’s deploy our Traefik ingress.
 
 #### Traefik
 
-Add the helm repo, create a namespace and deploy traefik:
+Add the Helm repo, create a namespace, and deploy Traefik:
 
 ```shell
 helm repo add traefik https://traefik.github.io/charts
@@ -166,20 +167,23 @@ helm install traefik traefik/traefik \
   --set service.type=LoadBalancer
 ```
 
-After successfull deployment we need our public IP address:
+After a successful deployment, we’ll need our public IP address:
 
 ```shell
 kubectl get svc -n traefik traefik
 ```
 
-Create a new DNS A-Record with the value of `EXTERNAL-IP`, for me this will be: `argocd.demo.k8s.stack-dev.de`
+Create a new DNS **A record** with the value of `EXTERNAL-IP`.
+Mine is for example: `argocd.demo.k8s.stack-dev.de`
+
 Test it with:
 
 ```shell
 nslookup argocd.demo.k8s.stack-dev.de
 ```
 
-OK now let's create a staging config first to test our setup, to avoid the let's encrypt rate limits, create a new file called `argocd-ingress.yaml`:
+Now let’s create a staging configuration to test our setup and avoid Let’s Encrypt rate limits.
+Create a new file called `argocd-ingress.yaml`:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -208,23 +212,23 @@ spec:
               number: 80
 ```
 
-And now we apply our staging config:
+Apply the staging config:
 
 ```shell
 kubectl apply -f argocd-ingress.yaml
 ```
 
-And check our cert status:
+Check the certificate status:
 
 ```shell
 kubectl get certificate -n argocd -w
 ```
 
-Now we can deploy ArgoCD
+Now we can deploy ArgoCD.
 
 ### Deploying ArgoCD
 
-To deploy ArgoCD in our cluster create a file called `argocd-install.yaml`:
+To deploy ArgoCD, create a file called `argocd-install.yaml`:
 
 ```yaml
 apiVersion: v1
@@ -248,30 +252,30 @@ kubectl create namespace argocd
 kubectl apply -n argocd -f argocd-install.yaml
 ```
 
-You can watch you deployment using:
+You can watch the deployment with:
 
 ```shell
 kubectl get pods -n argocd -w
 ```
 
-Once all services are `Running`, checkout the domain you set earlier, e.g.:
-https://argocd.demo.k8s.stack-dev.de
+Once all services show as `Running`, open the domain you configured earlier, e.g.:
+[https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de)
 
-**BEWARE:** You will get a certificate warning, since we are still using a staging certificate!
+**Note:** You’ll see a certificate warning because we’re still using a staging certificate.
 
-You can get the ArgoCD admin password with:
+Get the ArgoCD admin password with:
 
 ```shell
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 --decode && echo
 ```
 
-You can now login and change the password.
+You can now log in and change the password.
 
 ### Finalizing
 
-Finally we can replace the staging TLS certificate with a production certificate.
+Finally, we’ll replace the staging TLS certificate with a production one.
 
-Therefor edit: `argocd-ingress.yaml` and change `cert-manager.io/cluster-issuer` from `"letsencrypt-staging"` to `"letsencrypt"`:
+Edit `argocd-ingress.yaml` and change `cert-manager.io/cluster-issuer` from `"letsencrypt-staging"` to `"letsencrypt"`:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -300,20 +304,22 @@ spec:
               number: 80
 ```
 
-Apply the new config:
+Apply the updated configuration:
 
 ```shell
 kubectl apply -f argocd-ingress.yaml
 ```
 
-Visit your domain again, it should now have a valid TLS certificate.
+Visit your domain again — it should now have a valid TLS certificate.
 
 ## Using ArgoCD
 
-Now we can use ArgoCD to deploy our first App, for testing we'll be using the [ArgoCD Guestbook Example](https://github.com/argoproj/argocd-example-apps/tree/master/kustomize-guestbook).
+Now we can use ArgoCD to deploy our first application.
+For testing, we’ll use the [ArgoCD Guestbook Example](https://github.com/argoproj/argocd-example-apps/tree/master/kustomize-guestbook).
 
-First let's create a new DNS A-Record for our guestbook: guestbook.demo.k8s.stack-dev.de
+First, create a new DNS **A record** for our guestbook:
+`guestbook.demo.k8s.stack-dev.de`
 
-It should also point to `EXTERNAL-IP`.
+It should point to the same `EXTERNAL-IP`.
 
-After creating the entry we can configure ArgoCD.
+After creating the DNS entry, we can proceed to configure ArgoCD.
