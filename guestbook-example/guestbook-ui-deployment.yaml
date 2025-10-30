@@ -1,3 +1,4 @@
+# Source: https://github.com/argoproj/argocd-example-apps/tree/master/kustomize-guestbook
 apiVersion: apps/v1
 kind: Deployment
 metadata:
