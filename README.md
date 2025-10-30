@@ -9,7 +9,7 @@ First we need a working K8S setup
 
 ### Create a AKS Cluster
 
-**Prequesite:**
+**Perquisite:**
 
 We are going to use the [30 Day Free Azure Account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account) for this tutorial, after creating it we need to setup [azure-cli](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) on our local machine.
 After installing run `az login` to login to your azure account and run `az aks install-cli` to install aks `kubectl`.
@@ -71,7 +71,7 @@ az aks create \
 
 Wait for it to be ready...
 
-Congratualtions, we created a Azure AKS Cluster 🎉
+Congratulations, we created a Kubernetes Cluster 🎉
 
 To continue we need to add the the context to `kubectl`:
 
@@ -81,7 +81,7 @@ az aks get-credentials \
   --name $AKS_NAME
 ```
 
-To admisistrate the cluster we need to add our user to the "Azure Kubernetes Service RBAC Cluster Admin" Role, since we got Azure AD + Azure RBAC enabled:
+To administrate the cluster we need to add our user to the "Azure Kubernetes Service RBAC Cluster Admin" Role, since we got Azure AD + Azure RBAC enabled:
 
 ```shell
 USER_ID=$(az ad signed-in-user show --query id -o tsv)
@@ -91,9 +91,9 @@ az role assignment create \
   --scope $(az aks show --resource-group $RESOURCE_GROUP --name $AKS_NAME --query id -o tsv)
 ```
 
-wait a minute for the new role to propergate.
+wait a minute for the new role to propagate.
 
-Now we can verify that we are connteced:
+Now we can verify that we are connected:
 
 ```shell
 kubectl get nodes
@@ -269,7 +269,7 @@ You can now login and change the password.
 
 ### Finalizing
 
-Finnaly we can replace the staging TLS certificate with a production certificate.
+Finally we can replace the staging TLS certificate with a production certificate.
 
 Therefor edit: `argocd-ingress.yaml` and change `cert-manager.io/cluster-issuer` from `"letsencrypt-staging"` to `"letsencrypt"`:
 
