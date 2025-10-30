@@ -10,12 +10,11 @@ First, we need a working Kubernetes setup.
 
 **Prerequisites:**
 
-We’ll use the [30-Day Free Azure Account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account) for this tutorial. After registering, set up the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) on your local machine.
-After installation, run `az login` to log in to your Azure account, and `az aks install-cli` to install the AKS `kubectl` CLI tool.
+We will need a Azure Account for this tutorial, I you don't have one, you can use the [30-Day Free Azure Account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account). After registering, set up the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) on your local machine and run `az login` to log in to your Azure account. Then setup `kubectl` by running `az aks install-cli`. We will also need [Helm](https://helm.sh/docs/intro/install/#through-package-managers) to be installed.
 
 Later, we’ll also need a domain that we can point to our Kubernetes ingress. I’ll use my own, but you can easily use [DuckDNS](https://www.duckdns.org/) instead.
 
-Let’s define some variables that we’ll use throughout the setup:
+First define some variables that we’ll use throughout the setup:
 
 ```shell
 # Resource group name
@@ -30,15 +29,7 @@ NODE_SIZE="standard_a2_v2"
 NODE_COUNT=1
 ```
 
-Now we can create a resource group:
-
-```shell
-az group create \
-  --name $RESOURCE_GROUP \
-  --location $LOCATION
-```
-
-Since this is a new subscription, we need to register the following resource providers for our Kubernetes cluster to work:
+If this is a new subscription, we need to register the following resource providers for our Kubernetes cluster to work:
 
 ```shell
 az provider register --namespace Microsoft.ContainerService
@@ -52,7 +43,15 @@ This may take a few minutes. Check the registration status with:
 az provider list -o json | jq '.[] | select((.namespace=="Microsoft.ContainerService") or (.namespace=="Microsoft.OperationalInsights") or (.namespace=="Microsoft.Network")) | "\(.namespace): \(.registrationState)"' -r
 ```
 
-Now we can create our AKS cluster:
+Now we can create a resource group:
+
+```shell
+az group create \
+  --name $RESOURCE_GROUP \
+  --location $LOCATION
+```
+
+And create our AKS cluster:
 
 ```shell
 az aks create \
@@ -104,10 +103,9 @@ The cluster is now ready for deployments.
 
 ### Create an Ingress
 
-Before we can deploy ArgoCD, we need to set up an ingress to reach it securely. We’ll use [Traefik](https://traefik.io/traefik) for this.
-To install Traefik, we first need to install [Helm](https://helm.sh/docs/intro/install/#through-package-managers).
+Before we can deploy ArgoCD, we need to set up an ingress to reach it securely. We’ll use [Traefik](https://traefik.io/traefik) for this combined with [cert-manager](https://cert-manager.io/) for automate TLS certificate management.
 
-To automate TLS certificate management, we’ll also install [cert-manager](https://cert-manager.io/). Let’s start with that.
+Let’s start with `cert-manager`.
 
 #### cert-manager
 
@@ -123,7 +121,7 @@ helm install \
   --set crds.enabled=true
 ```
 
-Next, we need to configure it. Specifically, we’ll set up an issuer for Let’s Encrypt (using your email) and the HTTP-01 solver.
+Next, we need to configure it.
 Create a new file called `cluster-issuer-staging.yaml` (replace the email address with your own):
 
 ```yaml
@@ -174,7 +172,7 @@ kubectl get svc -n traefik traefik
 ```
 
 Create a new DNS **A record** with the value of `EXTERNAL-IP`.
-Mine is for example: `argocd.demo.k8s.stack-dev.de`
+Mine for example is: [https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de)
 
 Test it with:
 
@@ -310,7 +308,7 @@ Apply the updated configuration:
 kubectl apply -f argocd-ingress.yaml
 ```
 
-Visit your domain again — it should now have a valid TLS certificate.
+Visit your domain again, it should now have a valid TLS certificate.
 
 ## Using ArgoCD
 
