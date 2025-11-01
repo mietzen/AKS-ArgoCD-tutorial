@@ -14,7 +14,7 @@ We will need a Azure Account for this tutorial, I you don't have one, you can us
 
 Later, we’ll also need a domain that we can point to our Kubernetes ingress. I’ll use my own, but you can easily use [DuckDNS](https://www.duckdns.org/) instead.
 
-First define some variables that we’ll use throughout the setup:
+First we define some variables that we’ll use throughout the setup:
 
 ```shell
 # Resource group name
@@ -33,6 +33,7 @@ If this is a new subscription, we need to register the following resource provid
 
 ```shell
 az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.Insights
 az provider register --namespace Microsoft.OperationalInsights
 az provider register --namespace Microsoft.Network
 ```
@@ -180,8 +181,12 @@ Test it with:
 nslookup argocd.demo.k8s.stack-dev.de
 ```
 
-Now let’s create a staging configuration to test our setup and avoid Let’s Encrypt rate limits.
+Now let’s create a staging configuration for argocd to test our setup and avoid Let’s Encrypt rate limits.
 Create a new file called `argocd-ingress.yaml`:
+
+```shell
+kubectl create namespace argocd
+```
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -191,6 +196,8 @@ metadata:
   namespace: argocd
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/service.serversscheme: https
 spec:
   ingressClassName: traefik
   tls:
@@ -207,7 +214,7 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 80
+              number: 443 
 ```
 
 Apply the staging config:
@@ -226,28 +233,8 @@ Now we can deploy ArgoCD.
 
 ### Deploying ArgoCD
 
-To deploy ArgoCD, create a file called `argocd-install.yaml`:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  server.insecure: "true"
----
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-```
-
-Create a namespace and deploy it:
-
 ```shell
-kubectl create namespace argocd
-kubectl apply -n argocd -f argocd-install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
 You can watch the deployment with:
@@ -273,7 +260,32 @@ You can now log in and change the password.
 
 Finally, we’ll replace the staging TLS certificate with a production one.
 
-Edit `argocd-ingress.yaml` and change `cert-manager.io/cluster-issuer` from `"letsencrypt-staging"` to `"letsencrypt"`:
+Create a file called `cluster-issuer-prod.yaml`:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: postmaster@stack-dev.de  # replace!
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+    - http01:
+        ingress:
+          class: traefik
+```
+
+Apply the production configuration:
+
+```shell
+kubectl apply -f cluster-issuer-prod.yaml
+```
+
+Then edit `argocd-ingress.yaml` and change `cert-manager.io/cluster-issuer` from `"letsencrypt-staging"` to `"letsencrypt"`:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -283,6 +295,8 @@ metadata:
   namespace: argocd
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt"
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/service.serversscheme: https
 spec:
   ingressClassName: traefik
   tls:
@@ -299,12 +313,15 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 80
+              number: 443
 ```
 
-Apply the updated configuration:
+Apply the updated configuration and delete the old certs:
 
 ```shell
+# Delete the staging certificate and secret
+kubectl delete certificate argocd-server-tls -n argocd
+kubectl delete secret argocd-server-tls -n argocd
 kubectl apply -f argocd-ingress.yaml
 ```
 
