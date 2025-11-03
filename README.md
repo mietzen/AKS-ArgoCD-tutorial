@@ -41,7 +41,7 @@ az provider register --namespace Microsoft.Network
 This may take a few minutes. Check the registration status with:
 
 ```shell
-az provider list -o json | jq '.[] | select((.namespace=="Microsoft.ContainerService") or (.namespace=="Microsoft.OperationalInsights") or (.namespace=="Microsoft.Network")) | "\(.namespace): \(.registrationState)"' -r
+az provider list -o json | jq '.[] | select((.namespace=="Microsoft.ContainerService") or (.namespace=="microsoft.insights") or (.namespace=="Microsoft.OperationalInsights") or (.namespace=="Microsoft.Network")) | "\(.namespace): \(.registrationState)"' -r
 ```
 
 Now we can create a resource group:
@@ -181,12 +181,58 @@ Test it with:
 nslookup argocd.demo.k8s.stack-dev.de
 ```
 
-Now let’s create a staging configuration for argocd to test our setup and avoid Let’s Encrypt rate limits.
-Create a new file called `argocd-ingress.yaml`:
+Now we can deploy ArgoCD.
+
+### Deploying ArgoCD
+
+We'll turn off auto redirect to https in ArgoCD since we are using traefik as reverse proxy in front of it, therefore we need to create some files.
+First create a folder called `argocd`, inside create two files, `kustomization.yaml`:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+
+resources:
+  - https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+patches:
+  - path: argocd-cmd-params-cm-patch.yaml
+    target:
+      kind: ConfigMap
+      name: argocd-cmd-params-cm
+
+```
+
+and a file called `argocd-cmd-params-cm-patch.yaml`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+data:
+  server.insecure: "true"
+```
+
+What we are doing here is patching the official install chart to set the default connection to http using kustomize.
+
+Create a name space and deploy it:
 
 ```shell
 kubectl create namespace argocd
+kubectl apply -k argocd/
 ```
+
+You can watch the deployment with:
+
+```shell
+kubectl get pods -n argocd -w
+```
+
+To reach it we need to create a ingress with a staging configuration for argocd to test our setup and avoid Let’s Encrypt rate limits.
+Create a new file called `argocd-ingress.yaml`:
+
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -196,8 +242,7 @@ metadata:
   namespace: argocd
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-staging"
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/router.middlewares: traefik-redirect-to-https@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
@@ -214,12 +259,27 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 443 
+              number: 80
+```
+
+Now we want to add a http to https redirect on our ingress, create a file called: `redirect-middleware.yaml`
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-to-https
+  namespace: traefik
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
 ```
 
 Apply the staging config:
 
 ```shell
+kubectl apply -f traefik-redirect-middleware.yaml
 kubectl apply -f argocd-ingress.yaml
 ```
 
@@ -227,20 +287,6 @@ Check the certificate status:
 
 ```shell
 kubectl get certificate -n argocd -w
-```
-
-Now we can deploy ArgoCD.
-
-### Deploying ArgoCD
-
-```shell
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-```
-
-You can watch the deployment with:
-
-```shell
-kubectl get pods -n argocd -w
 ```
 
 Once all services show as `Running`, open the domain you configured earlier, e.g.:
@@ -295,8 +341,7 @@ metadata:
   namespace: argocd
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt"
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/service.serversscheme: https
+    traefik.ingress.kubernetes.io/router.middlewares: traefik-redirect-to-https@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
@@ -313,7 +358,7 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 443
+              number: 80
 ```
 
 Apply the updated configuration and delete the old certs:
@@ -325,7 +370,13 @@ kubectl delete secret argocd-server-tls -n argocd
 kubectl apply -f argocd-ingress.yaml
 ```
 
-Visit your domain again, it should now have a valid TLS certificate.
+Check the certificate status:
+
+```shell
+kubectl get certificate -n argocd -w
+```
+
+Then visit your domain again, it should now have a valid TLS certificate (You might need to clear the cache).
 
 ## Using ArgoCD
 
@@ -338,3 +389,22 @@ First, create a new DNS **A record** for our guestbook:
 It should point to the same `EXTERNAL-IP`.
 
 After creating the DNS entry, we can proceed to configure ArgoCD.
+
+## Delete all
+
+If you are finished testing, you can delete the cluster and local configuration executing the following code.
+
+Remove user, cluster and context from `kubectl` config:
+
+```shell
+KUBECTL_USER=$(kubectl config get-users | grep "${RESOURCE_GROUP}_${AKS_NAME}")
+kubectl config delete-cluster "$AKS_NAME"
+kubectl config unset users."$KUBECTL_USER"
+kubectl config delete-context "$AKS_NAME"
+```
+
+To remove the whole resource group including the cluster:
+
+```shell
+az group delete --name $RESOURCE_GROUP --yes
+```
