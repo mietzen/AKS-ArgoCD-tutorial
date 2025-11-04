@@ -381,7 +381,7 @@ Then visit your domain again, it should now have a valid TLS certificate (You mi
 ## Using ArgoCD
 
 Now we can use ArgoCD to deploy our first application.
-For testing, we’ll use the [ArgoCD Guestbook Example](https://github.com/argoproj/argocd-example-apps/tree/master/kustomize-guestbook).
+For testing, we'll use the [Kubernetes Guestbook Example](https://kubernetes.io/docs/tutorials/stateless-application/guestbook/).
 
 First, create a new DNS **A record** for our guestbook:
 `guestbook.demo.k8s.stack-dev.de`
@@ -389,6 +389,204 @@ First, create a new DNS **A record** for our guestbook:
 It should point to the same `EXTERNAL-IP`.
 
 After creating the DNS entry, we can proceed to configure ArgoCD.
+
+### Preparing the Guestbook Application
+
+Our guestbook application consists of a simple PHP frontend that stores data in Redis. We've adapted the official Kubernetes guestbook example to work with our AKS cluster.
+
+The application structure looks like this:
+```
+.
+├── app
+│   └── guestbook
+│       ├── dev
+│       │   ├── guestbook-ingress.yaml
+│       │   ├── guestbook-ui-deployment.yaml
+│       │   ├── guestbook-ui-svc.yaml
+│       │   ├── kustomization.yaml
+│       │   ├── redis-deployment.yaml
+│       │   └── redis-svc.yaml
+│       └── application.yaml
+```
+
+#### Key Configuration Files
+
+**1. `application.yaml`** - The ArgoCD Application definition:
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: guestbook-argo-application
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/mietzen/AKS-ArgoCD-tutorial
+    targetRevision: HEAD
+    path: app/guestbook/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: guestbook
+
+  syncPolicy:
+    syncOptions:
+    - CreateNamespace=true
+
+    automated:
+      selfHeal: true
+      prune: true
+```
+
+**2. `kustomization.yaml`** - Kustomize configuration:
+```yaml
+resources:
+- guestbook-ui-deployment.yaml
+- guestbook-ui-svc.yaml
+- guestbook-ingress.yaml
+- redis-deployment.yaml
+- redis-svc.yaml
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+```
+
+**3. `guestbook-ingress.yaml`** - Ingress with TLS:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: guestbook-ui-ingress
+  namespace: guestbook
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt"
+    traefik.ingress.kubernetes.io/router.middlewares: traefik-redirect-to-https@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+    - guestbook.demo.k8s.stack-dev.de # replace with your domain!
+    secretName: guestbook-ui-tls
+  rules:
+  - host: guestbook.demo.k8s.stack-dev.de # replace with your domain!
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: guestbook-ui
+            port:
+              number: 80
+```
+
+**4. `redis-deployment.yaml`** - Single Redis instance (optimized for small clusters):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        ports:
+        - containerPort: 6379
+```
+
+**5. `redis-svc.yaml`** - Redis services (both leader and follower pointing to the same pod):
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-leader
+  labels:
+    app: redis
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-follower
+  labels:
+    app: redis
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: redis
+```
+
+**Note:** We create both `redis-leader` and `redis-follower` services pointing to the same Redis pod because the guestbook frontend expects both service names (writes go to leader, reads go to follower). This simplified setup is perfect for development environments with limited resources.
+
+### Deploying the Application
+
+To deploy our application definition to ArgoCD we need to use `kubectl apply` one last time:
+
+```shell
+kubectl apply -f app/guestbook/application.yaml
+```
+
+You can now go to your argocd instance, e.g. [https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de) and check out the deployment:
+
+![ArgoCD Guestbook App deployment](assets/argocd-app.jpg)
+
+You should see:
+- One `guestbook-ui` deployment (with a replicaset and a pod)
+- One `redis` deployment (with a replicaset and a pod)
+- Services:
+  - `guestbook-ui`
+  - `redis-leader`
+  - `redis-follower`
+- Ingress: `guestbook-ui-ingress`
+  - Certificate: `guestbook-ui-tls`
+
+### Accessing the Guestbook
+
+Once all pods are running and the certificate is ready, visit your guestbook e.g.: [https://guestbook.demo.k8s.stack-dev.de](https://guestbook.demo.k8s.stack-dev.de)
+
+![Guestbook App](assets/guestbook-app.jpg)
+
+You should see the guestbook interface where you can:
+- Submit messages
+- View all submitted messages
+- See messages persist in Redis
+
+### Making Changes
+
+Thanks to ArgoCD's GitOps approach, any changes you push to your Git repository will automatically be synced to the cluster (due to `selfHeal: true` and `prune: true` in the sync policy).
+
+To make changes:
+
+1. Edit the YAML files in `app/guestbook/dev/`
+2. Commit and push to your repository
+3. ArgoCD will detect the changes and automatically sync
+4. Watch the sync in the ArgoCD UI
+
+You can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After you push this change you can watch ArgoCD pick up that change and deploy a new redis instance.
+
+Congratulations! You've successfully deployed a GitOps-managed application on AKS using ArgoCD 🎉
 
 ## Delete all
 
