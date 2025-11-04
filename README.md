@@ -395,6 +395,7 @@ After creating the DNS entry, we can proceed to configure ArgoCD.
 Our guestbook application consists of a simple PHP frontend that stores data in Redis. We've adapted the official Kubernetes guestbook example to work with our AKS cluster.
 
 The application structure looks like this:
+
 ```
 .
 ├── app
@@ -412,6 +413,7 @@ The application structure looks like this:
 #### Key Configuration Files
 
 **1. `application.yaml`** - The ArgoCD Application definition:
+
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -439,6 +441,7 @@ spec:
 ```
 
 **2. `kustomization.yaml`** - Kustomize configuration:
+
 ```yaml
 resources:
 - guestbook-ui-deployment.yaml
@@ -452,6 +455,7 @@ kind: Kustomization
 ```
 
 **3. `guestbook-ingress.yaml`** - Ingress with TLS:
+
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -481,6 +485,7 @@ spec:
 ```
 
 **4. `redis-deployment.yaml`** - Single Redis instance (optimized for small clusters):
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -510,6 +515,7 @@ spec:
 ```
 
 **5. `redis-svc.yaml`** - Redis services (both leader and follower pointing to the same pod):
+
 ```yaml
 apiVersion: v1
 kind: Service
@@ -553,6 +559,7 @@ You can now go to your argocd instance, e.g. [https://argocd.demo.k8s.stack-dev.
 ![ArgoCD Guestbook App deployment](assets/argocd-app.jpg)
 
 You should see:
+
 - One `guestbook-ui` deployment (with a replicaset and a pod)
 - One `redis` deployment (with a replicaset and a pod)
 - Services:
@@ -569,6 +576,7 @@ Once all pods are running and the certificate is ready, visit your guestbook e.g
 ![Guestbook App](assets/guestbook-app.jpg)
 
 You should see the guestbook interface where you can:
+
 - Submit messages
 - View all submitted messages
 - See messages persist in Redis
@@ -585,6 +593,8 @@ To make changes:
 4. Watch the sync in the ArgoCD UI
 
 You can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After you push this change you can watch ArgoCD pick up that change and deploy a new redis instance.
+
+![ArgoCD Sync](assets/argocd-sync.jpg)
 
 Congratulations! You've successfully deployed a GitOps-managed application on AKS using ArgoCD 🎉
 
