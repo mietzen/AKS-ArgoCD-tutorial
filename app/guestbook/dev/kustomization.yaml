@@ -1,5 +1,4 @@
 # Source: https://github.com/argoproj/argocd-example-apps/tree/master/kustomize-guestbook
-namePrefix: kustomize-
 
 resources:
 - guestbook-ui-deployment.yaml
