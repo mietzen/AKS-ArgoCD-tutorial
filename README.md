@@ -1,6 +1,6 @@
 # Azure AKS - Argo CD Tutorial
 
-In this tutorial, we’ll create an Azure AKS cluster and deploy Traefik, Cert-Manager, Argo CD, and the Kubernetes Guestbook example app. Argo CD is a GitOps-based deployment tool for Kubernetes, allowing you to manage application state through Git repositories. It continuously monitors your cluster and automatically applies updates when changes are pushed to Git, improving consistency, automation, and reliability in your CI/CD workflow.
+In this tutorial, we’ll create an Azure AKS cluster and deploy Traefik, Cert-Manager, Argo CD, and the Kubernetes Guestbook example app. Argo CD is a GitOps-based deployment tool for Kubernetes, allowing you to manage application state through Git repositories. It continuously monitors the cluster and automatically applies updates when changes are pushed to Git, improving consistency, automation, and reliability in your CI/CD workflow.
 
 ## K8S Setup
 
@@ -71,7 +71,7 @@ az aks create \
 
 Wait for it to finish provisioning.
 
-Congratulations — we’ve created a Kubernetes cluster 🎉
+Congratulations! We’ve created a Kubernetes cluster 🎉
 
 Next, we need to add the context to `kubectl`:
 
@@ -238,7 +238,7 @@ kubectl create namespace argocd
 kubectl apply -k bootstrap/argocd/argocd-kustomize/
 ```
 
-You can watch the deployment with:
+We can watch the deployment with:
 
 ```shell
 kubectl get pods -n argocd -w
@@ -303,7 +303,7 @@ Check the certificate status:
 kubectl get certificate -n argocd -w
 ```
 
-Once all services show as `Running`, open the domain you configured earlier, e.g.:
+Once all services show as `Running`, open the domain we configured earlier, e.g.:
 [https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de)
 
 **Note:** You’ll see a certificate warning because we’re still using a staging certificate.
@@ -314,7 +314,7 @@ Get the Argo CD admin password with:
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 --decode && echo
 ```
 
-You can now log in and change the password.
+We can now log in and change the password.
 
 ### Finalizing
 
@@ -456,15 +456,15 @@ spec:
 - Kustomize configuration: `app/guestbook/dev/kustomization.yaml`
 
 ```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
 - guestbook-ui-deployment.yaml
 - guestbook-ui-svc.yaml
 - guestbook-ingress.yaml
 - redis-deployment.yaml
 - redis-svc.yaml
-
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
 ```
 
 - Ingress definition: `app/guestbook/dev/guestbook-ingress.yaml`
@@ -569,7 +569,7 @@ To deploy our application definition to Argo CD we need to use `kubectl apply` o
 kubectl apply -f app/guestbook/application.yaml
 ```
 
-You can now go to your Argo CD instance, e.g. [https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de) and check out the deployment:
+We can now go to your Argo CD instance, e.g. [https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de) and check out the deployment:
 
 ![Argo CD Guestbook App deployment](assets/argocd-app.jpg)
 
@@ -598,7 +598,7 @@ You should see the guestbook interface where you can:
 
 ### Making Changes
 
-Thanks to Argo CD's GitOps approach, any changes you push to your Git repository will automatically be synced to the cluster (due to `selfHeal: true` and `prune: true` in the sync policy).
+Thanks to Argo CD's GitOps approach, any changes we push to your Git repository will automatically be synced to the cluster (due to `selfHeal: true` and `prune: true` in the sync policy).
 
 To make changes:
 
@@ -609,7 +609,7 @@ To make changes:
 
 In a real GitOps setup, changes would normally go through a pull request, review, and automated validation process before being merged. Updates are often deployed to staging first, then promoted to production using the same Git workflow. While this tutorial keeps things simple, these practices enable safer, traceable, and fully automated deployments.
 
-But you can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After you push this change you can watch Argo CD pick up that change and deploy a new redis instance.
+But we can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After we push this change we can watch Argo CD pick up that change and deploy a new redis instance.
 
 ![Argo CD Sync](assets/argocd-sync.jpg)
 
@@ -617,7 +617,7 @@ Congratulations! You've successfully deployed a GitOps-managed application on AK
 
 ## Delete all
 
-If you are finished testing, you can delete the cluster and local configuration executing the following code.
+If you are finished testing, we can delete the cluster and local configuration executing the following code.
 
 Remove user, cluster and context from `kubectl` config:
 
