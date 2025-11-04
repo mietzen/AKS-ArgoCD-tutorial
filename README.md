@@ -10,7 +10,7 @@ First, we need a working Kubernetes setup.
 
 **Prerequisites:**
 
-We will need a Azure Account for this tutorial, I you don't have one, you can use the [30-Day Free Azure Account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account). After registering, set up the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) on your local machine and run `az login` to log in to your Azure account. Then setup `kubectl` by running `az aks install-cli`. We will also need [Helm](https://helm.sh/docs/intro/install/#through-package-managers) to be installed.
+We will need a Azure Account for this tutorial, If you don't have one, you can use the [30-Day Free Azure Account](https://azure.microsoft.com/en-us/pricing/purchase-options/azure-account). After registering, set up the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli?view=azure-cli-latest) on your local machine and run `az login` to log in to your Azure account. Then setup `kubectl` by running `az aks install-cli`. We will also need [Helm](https://helm.sh/docs/intro/install/#through-package-managers) to be installed.
 
 Later, we’ll also need a domain that we can point to our Kubernetes ingress. I’ll use my own, but you can easily use [DuckDNS](https://www.duckdns.org/) instead.
 
@@ -231,7 +231,7 @@ data:
 
 What we are doing here is patching the official install chart to set the default connection to http using [kustomize](https://github.com/kubernetes-sigs/kustomize).
 
-Create a name space and deploy it:
+Create a namespace and deploy it:
 
 ```shell
 kubectl create namespace argocd
