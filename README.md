@@ -215,7 +215,7 @@ data:
   server.insecure: "true"
 ```
 
-What we are doing here is patching the official install chart to set the default connection to http using kustomize.
+What we are doing here is patching the official install chart to set the default connection to http using [kustomize](https://github.com/kubernetes-sigs/kustomize).
 
 Create a name space and deploy it:
 
