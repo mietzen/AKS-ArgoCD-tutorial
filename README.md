@@ -1,6 +1,6 @@
 # Azure AKS - Argo CD Tutorial
 
-In this tutorial, we’ll set up an Azure AKS cluster and deploy Traefik + Certmanager, Argo CD, and the Kubernetes Guestbook example application on it.
+In this tutorial, we’ll create an Azure AKS cluster and deploy Traefik, Cert-Manager, Argo CD, and the Kubernetes Guestbook example app. Argo CD is a GitOps-based deployment tool for Kubernetes, allowing you to manage application state through Git repositories. It continuously monitors your cluster and automatically applies updates when changes are pushed to Git, improving consistency, automation, and reliability in your CI/CD workflow.
 
 ## K8S Setup
 
@@ -607,7 +607,9 @@ To make changes:
 3. Argo CD will detect the changes and automatically sync
 4. Watch the sync in the Argo CD UI
 
-You can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After you push this change you can watch Argo CD pick up that change and deploy a new redis instance.
+In a real GitOps setup, changes would normally go through a pull request, review, and automated validation process before being merged. Updates are often deployed to staging first, then promoted to production using the same Git workflow. While this tutorial keeps things simple, these practices enable safer, traceable, and fully automated deployments.
+
+But you can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After you push this change you can watch Argo CD pick up that change and deploy a new redis instance.
 
 ![Argo CD Sync](assets/argocd-sync.jpg)
 
