@@ -1,6 +1,6 @@
-# Azure AKS - ArgoCD Tutorial
+# Azure AKS - Argo CD Tutorial
 
-In this tutorial, we’ll set up an Azure AKS cluster and deploy Traefik, ArgoCD, and an example application on it.
+In this tutorial, we’ll set up an Azure AKS cluster and deploy Traefik + Certmanager, Argo CD, and the Kubernetes Guestbook example application on it.
 
 ## K8S Setup
 
@@ -104,7 +104,7 @@ The cluster is now ready for deployments.
 
 ### Create an Ingress
 
-Before we can deploy ArgoCD, we need to set up an ingress to reach it securely. We’ll use [Traefik](https://traefik.io/traefik) for this combined with [cert-manager](https://cert-manager.io/) for automate TLS certificate management.
+Before we can deploy Argo CD, we need to set up an ingress to reach it securely. We’ll use [Traefik](https://traefik.io/traefik) for this combined with [cert-manager](https://cert-manager.io/) for automate TLS certificate management.
 
 Let’s start with `cert-manager`.
 
@@ -122,8 +122,14 @@ helm install \
   --set crds.enabled=true
 ```
 
-Next, we need to configure it.
-Create a new file called `cluster-issuer-staging.yaml` (replace the email address with your own):
+Next, we need to configure it. Create a new folder called `bootstrap` inside create another new folder called `ingress`. 
+
+```
+ bootstrap
+ └── ingress
+```
+
+Now create a new file inside these folders, `bootstrap/ingress/cluster-issuer-staging.yaml` (replace the email address with your own):
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -145,7 +151,7 @@ spec:
 Apply the configuration:
 
 ```shell
-kubectl apply -f cluster-issuer-staging.yaml
+kubectl apply -f bootstrap/ingress/cluster-issuer-staging.yaml
 ```
 
 Now, let’s deploy our Traefik ingress.
@@ -181,12 +187,20 @@ Test it with:
 nslookup argocd.demo.k8s.stack-dev.de
 ```
 
-Now we can deploy ArgoCD.
+Now we can deploy Argo CD.
 
-### Deploying ArgoCD
+### Deploying Argo CD
 
-We'll turn off auto redirect to https in ArgoCD since we are using traefik as reverse proxy in front of it, therefore we need to create some files.
-First create a folder called `argocd`, inside create two files, `kustomization.yaml`:
+We'll turn off auto redirect to https in Argo CD since we are using traefik as reverse proxy in front of it, therefore we need to create some files.
+First create two new folders called `argocd`, inside of `bootstrap` and another inside of `argocd` called `argocd-kustomize`.
+
+```
+ bootstrap
+ └── argocd
+     └── argocd-kustomize
+```
+
+We create two new files, `bootstrap/argocd/argocd-kustomize/kustomization.yaml`:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -204,7 +218,7 @@ patches:
 
 ```
 
-and a file called `argocd-cmd-params-cm-patch.yaml`:
+and a file called `bootstrap/argocd/argocd-kustomize/argocd-cmd-params-cm-patch.yaml`:
 
 ```yaml
 apiVersion: v1
@@ -221,7 +235,7 @@ Create a name space and deploy it:
 
 ```shell
 kubectl create namespace argocd
-kubectl apply -k argocd/
+kubectl apply -k bootstrap/argocd/argocd-kustomize/
 ```
 
 You can watch the deployment with:
@@ -230,8 +244,8 @@ You can watch the deployment with:
 kubectl get pods -n argocd -w
 ```
 
-To reach it we need to create a ingress with a staging configuration for argocd to test our setup and avoid Let’s Encrypt rate limits.
-Create a new file called `argocd-ingress.yaml`:
+To reach it we need to create a ingress with a staging configuration for Argo CD to test our setup and avoid Let’s Encrypt rate limits.
+Create a new file called `bootstrap/argocd/argocd-ingress.yaml`:
 
 
 ```yaml
@@ -262,7 +276,7 @@ spec:
               number: 80
 ```
 
-Now we want to add a http to https redirect on our ingress, create a file called: `redirect-middleware.yaml`
+Now we want to add a http to https redirect on our ingress, create a file called: `bootstrap/ingress/traefik-redirect-middleware.yaml`
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
@@ -279,8 +293,8 @@ spec:
 Apply the staging config:
 
 ```shell
-kubectl apply -f traefik-redirect-middleware.yaml
-kubectl apply -f argocd-ingress.yaml
+kubectl apply -f bootstrap/ingress/traefik-redirect-middleware.yaml
+kubectl apply -f bootstrap/argocd/argocd-ingress.yaml
 ```
 
 Check the certificate status:
@@ -294,7 +308,7 @@ Once all services show as `Running`, open the domain you configured earlier, e.g
 
 **Note:** You’ll see a certificate warning because we’re still using a staging certificate.
 
-Get the ArgoCD admin password with:
+Get the Argo CD admin password with:
 
 ```shell
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 --decode && echo
@@ -306,7 +320,7 @@ You can now log in and change the password.
 
 Finally, we’ll replace the staging TLS certificate with a production one.
 
-Create a file called `cluster-issuer-prod.yaml`:
+Create a file called `bootstrap/ingress/cluster-issuer-prod.yaml`:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -328,10 +342,10 @@ spec:
 Apply the production configuration:
 
 ```shell
-kubectl apply -f cluster-issuer-prod.yaml
+kubectl apply -f bootstrap/ingress/cluster-issuer-prod.yaml
 ```
 
-Then edit `argocd-ingress.yaml` and change `cert-manager.io/cluster-issuer` from `"letsencrypt-staging"` to `"letsencrypt"`:
+Then edit `bootstrap/argocd/argocd-ingress.yaml` and change `cert-manager.io/cluster-issuer` from `"letsencrypt-staging"` to `"letsencrypt"`:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -367,7 +381,7 @@ Apply the updated configuration and delete the old certs:
 # Delete the staging certificate and secret
 kubectl delete certificate argocd-server-tls -n argocd
 kubectl delete secret argocd-server-tls -n argocd
-kubectl apply -f argocd-ingress.yaml
+kubectl apply -f bootstrap/argocd/argocd-ingress.yaml
 ```
 
 Check the certificate status:
@@ -378,9 +392,9 @@ kubectl get certificate -n argocd -w
 
 Then visit your domain again, it should now have a valid TLS certificate (You might need to clear the cache).
 
-## Using ArgoCD
+## Using Argo CD
 
-Now we can use ArgoCD to deploy our first application.
+Now we can use Argo CD to deploy our first application.
 For testing, we'll use the [Kubernetes Guestbook Example](https://kubernetes.io/docs/tutorials/stateless-application/guestbook/).
 
 First, create a new DNS **A record** for our guestbook:
@@ -388,7 +402,7 @@ First, create a new DNS **A record** for our guestbook:
 
 It should point to the same `EXTERNAL-IP`.
 
-After creating the DNS entry, we can proceed to configure ArgoCD.
+After creating the DNS entry, we need a git repository. Create one on e.g. GitHub and check in all files of your tutorial working directory.
 
 ### Preparing the Guestbook Application
 
@@ -397,22 +411,21 @@ Our guestbook application consists of a simple PHP frontend that stores data in 
 The application structure looks like this:
 
 ```
-.
-├── app
-│   └── guestbook
-│       ├── dev
-│       │   ├── guestbook-ingress.yaml
-│       │   ├── guestbook-ui-deployment.yaml
-│       │   ├── guestbook-ui-svc.yaml
-│       │   ├── kustomization.yaml
-│       │   ├── redis-deployment.yaml
-│       │   └── redis-svc.yaml
-│       └── application.yaml
+app
+└── guestbook
+    ├── dev
+    │   ├── guestbook-ingress.yaml
+    │   ├── guestbook-ui-deployment.yaml
+    │   ├── guestbook-ui-svc.yaml
+    │   ├── kustomization.yaml
+    │   ├── redis-deployment.yaml
+    │   └── redis-svc.yaml
+    └── application.yaml
 ```
 
-#### Key Configuration Files
+Let's create all files:
 
-**1. `application.yaml`** - The ArgoCD Application definition:
+- Argo CD Application definition: `app/guestbook/application.yaml`
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -424,7 +437,7 @@ spec:
   project: default
 
   source:
-    repoURL: https://github.com/mietzen/AKS-ArgoCD-tutorial
+    repoURL: https://github.com/mietzen/AKS-ArgoCD-tutorial # Replace with your own repo!
     targetRevision: HEAD
     path: app/guestbook/dev
   destination:
@@ -440,7 +453,7 @@ spec:
       prune: true
 ```
 
-**2. `kustomization.yaml`** - Kustomize configuration:
+- Kustomize configuration: `app/guestbook/dev/kustomization.yaml`
 
 ```yaml
 resources:
@@ -454,7 +467,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 ```
 
-**3. `guestbook-ingress.yaml`** - Ingress with TLS:
+- Ingress definition: `app/guestbook/dev/guestbook-ingress.yaml`
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -484,7 +497,7 @@ spec:
               number: 80
 ```
 
-**4. `redis-deployment.yaml`** - Single Redis instance (optimized for small clusters):
+- Redis instance `app/guestbook/dev/redis-deployment.yaml`
 
 ```yaml
 apiVersion: apps/v1
@@ -514,7 +527,7 @@ spec:
         - containerPort: 6379
 ```
 
-**5. `redis-svc.yaml`** - Redis services (both leader and follower pointing to the same pod):
+- Redis services (both leader and follower pointing to the same pod): `app/guestbook/dev/redis-svc.yaml`
 
 ```yaml
 apiVersion: v1
@@ -544,19 +557,21 @@ spec:
     app: redis
 ```
 
-**Note:** We create both `redis-leader` and `redis-follower` services pointing to the same Redis pod because the guestbook frontend expects both service names (writes go to leader, reads go to follower). This simplified setup is perfect for development environments with limited resources.
+**Note:** We create both `redis-leader` and `redis-follower` services pointing to the same Redis pod because the guestbook frontend expects both service names (writes go to leader, reads go to follower). This simplified setup is due to our development environment with limited resources.
+
+After creating all these files, add, commit and push them to your GitHub Repo.
 
 ### Deploying the Application
 
-To deploy our application definition to ArgoCD we need to use `kubectl apply` one last time:
+To deploy our application definition to Argo CD we need to use `kubectl apply` one last time:
 
 ```shell
 kubectl apply -f app/guestbook/application.yaml
 ```
 
-You can now go to your argocd instance, e.g. [https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de) and check out the deployment:
+You can now go to your Argo CD instance, e.g. [https://argocd.demo.k8s.stack-dev.de](https://argocd.demo.k8s.stack-dev.de) and check out the deployment:
 
-![ArgoCD Guestbook App deployment](assets/argocd-app.jpg)
+![Argo CD Guestbook App deployment](assets/argocd-app.jpg)
 
 You should see:
 
@@ -583,20 +598,20 @@ You should see the guestbook interface where you can:
 
 ### Making Changes
 
-Thanks to ArgoCD's GitOps approach, any changes you push to your Git repository will automatically be synced to the cluster (due to `selfHeal: true` and `prune: true` in the sync policy).
+Thanks to Argo CD's GitOps approach, any changes you push to your Git repository will automatically be synced to the cluster (due to `selfHeal: true` and `prune: true` in the sync policy).
 
 To make changes:
 
 1. Edit the YAML files in `app/guestbook/dev/`
 2. Commit and push to your repository
-3. ArgoCD will detect the changes and automatically sync
-4. Watch the sync in the ArgoCD UI
+3. Argo CD will detect the changes and automatically sync
+4. Watch the sync in the Argo CD UI
 
-You can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After you push this change you can watch ArgoCD pick up that change and deploy a new redis instance.
+You can test this by e.g. changing the redis image from `redis:7-alpine` to `redis:8-alpine`. After you push this change you can watch Argo CD pick up that change and deploy a new redis instance.
 
-![ArgoCD Sync](assets/argocd-sync.jpg)
+![Argo CD Sync](assets/argocd-sync.jpg)
 
-Congratulations! You've successfully deployed a GitOps-managed application on AKS using ArgoCD 🎉
+Congratulations! You've successfully deployed a GitOps-managed application on AKS using Argo CD 🎉
 
 ## Delete all
 
@@ -616,3 +631,10 @@ To remove the whole resource group including the cluster:
 ```shell
 az group delete --name $RESOURCE_GROUP --yes
 ```
+
+## Resources
+
+- [Kubernetes Guestbook Example](https://kubernetes.io/docs/tutorials/stateless-application/guestbook/)
+- [Argo CD Tutorial for Beginners](https://www.youtube.com/watch?v=MeU5_k9ssrs)
+- [Argo CD documentation](https://argo-cd.readthedocs.io/en/stable/)
+- [traefik documentation](https://doc.traefik.io/traefik/)
